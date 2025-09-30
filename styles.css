@@ -10,8 +10,10 @@ button.ghost{background:#fff;color:#111}
 button+button{margin-left:.5rem}
 .card{background:#fff;border:1px solid #e5e7eb;border-radius:.8rem;padding:1rem;margin-bottom:1rem;box-shadow:0 1px 0 rgba(0,0,0,.02)}
 .row{display:flex;gap:1rem;align-items:center;margin:.6rem 0}
+.row .grow{flex:1}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 details{margin:.6rem 0}
 summary{font-weight:600;cursor:pointer}
 pre{background:#0b1020;color:#cde3ff;padding:.8rem;border-radius:.5rem;overflow:auto}
 footer{padding:1rem;text-align:center;color:#6b7280}
+.hint{color:#6b7280;font-size:.9rem;margin-top:.25rem}
