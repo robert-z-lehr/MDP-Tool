@@ -1,4 +1,4 @@
-# MDP Builder (Front-end Only)
+# [MDP Builder Tool](https://robert-z-lehr.github.io/MDP-Tool/)
 
 A small GitHub Pages app that:
 - takes a natural-language problem,
