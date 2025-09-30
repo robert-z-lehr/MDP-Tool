@@ -9,24 +9,86 @@
 <body>
 <header>
   <h1>MDP Builder</h1>
-  <p>Paste a natural-language problem. This tool drafts MDP elements, lets you edit them, and then runs a finite-horizon dynamic program. <strong>Value function is an output</strong>, not an input.</p>
+  <p>Paste a natural-language problem, draft MDP/POMDP elements, edit, and solve a finite-horizon dynamic program.
+    <strong>Value function is an output</strong>, not an input.</p>
 </header>
 
 <main>
+  <!-- 0) Assistant (optional) -->
   <section class="card">
-    <h2>1) Describe the problem</h2>
-    <textarea id="nlpInput" rows="7" placeholder="Example: A delivery robot navigates 3 zones (A,B,C). Each hour, it may wait, charge, or deliver... Costs: battery depletion, delay penalties... Constraints: energy ≤ 100... Horizon: 4 stages..."></textarea>
+    <h2>0) Assistant (Optional)</h2>
+    <div class="row">
+      <label class="grow">OpenAI API Key
+        <input id="oaikey" type="password" placeholder="sk-..." />
+      </label>
+      <label>Model
+        <input id="model" type="text" value="gpt-4o-mini" />
+      </label>
+      <label>Save key?
+        <input id="rememberKey" type="checkbox">
+      </label>
+    </div>
+    <textarea id="assistantPrompt" rows="5" placeholder="Ask for help extracting states/actions/costs/transitions from the problem text, or request a JSON skeleton."></textarea>
+    <div class="row">
+      <button id="askBtn">Ask Assistant</button>
+      <button id="applySuggestionBtn" class="ghost">Apply JSON in Assistant Output</button>
+    </div>
+    <details>
+      <summary>Assistant Output</summary>
+      <pre id="assistantOut"></pre>
+    </details>
+    <p class="hint">Security note: client-side keys are not secure. Use a serverless proxy for production (see README).</p>
+  </section>
+
+  <!-- 1) Natural-language problem -->
+  <section class="card">
+    <h2>1) Describe the problem (Natural Language)</h2>
+    <textarea id="nlpInput" rows="7" placeholder="Example: A delivery robot navigates 3 zones (A,B,C). Each hour, it may wait, charge, or deliver. Delivering from A tends to move to B, and from B to C. Charging tends to keep it in place. Horizon 4. Costs: deliver is 2 in A/B, 4 in C; wait is 1; charge is 3. Salvage 0."></textarea>
     <div class="row">
       <label>Horizon T (stages): <input id="horizon" type="number" min="1" value="4"></label>
       <label>Discount γ (0–1): <input id="gamma" type="number" min="0" max="0.9999" step="0.01" value="0.95"></label>
+      <button id="parseBtn">Draft MDP from text</button>
+      <button id="loadExampleBtn" class="ghost">Load example</button>
     </div>
-    <button id="parseBtn">Draft MDP from text</button>
-    <button id="loadExampleBtn" class="ghost">Load example</button>
   </section>
 
+  <!-- 2) Invariants (metadata) -->
   <section class="card grid-2">
     <div>
-      <h2>2) Edit MDP Inputs</h2>
+      <h2>2) Invariants (Metadata)</h2>
+      <details open>
+        <summary>Agent</summary>
+        <input id="invAgent" placeholder="single / multi; cooperative / competitive">
+      </details>
+      <details>
+        <summary>Observability</summary>
+        <input id="invObs" placeholder="MDP (full) / POMDP (partial)">
+      </details>
+      <details>
+        <summary>Policy</summary>
+        <input id="invPolicy" placeholder="stationary / time-dependent / history-dependent">
+      </details>
+      <details>
+        <summary>Objective</summary>
+        <input id="invObjective" placeholder="cumulative / discounted / average / risk-sensitive (CVaR)">
+      </details>
+      <details>
+        <summary>Constraints</summary>
+        <textarea id="constraints" rows="3" placeholder="e.g., energy<=100; forbid deliver in state=C"></textarea>
+      </details>
+      <details>
+        <summary>Stochasticity</summary>
+        <input id="invStoch" placeholder="deterministic / stochastic; stationary / time-varying">
+      </details>
+      <details>
+        <summary>Salvage Function V_T(s)</summary>
+        <textarea id="salvage" rows="4" placeholder='JSON mapping state→value, e.g., {"A":0,"B":0,"C":0}'></textarea>
+      </details>
+    </div>
+
+    <!-- 3) Core MDP inputs used by solver -->
+    <div>
+      <h2>3) Edit MDP Inputs (Used by Solver)</h2>
       <details open>
         <summary>States S</summary>
         <textarea id="states" rows="4" placeholder="Comma-separated, e.g., A,B,C"></textarea>
@@ -36,58 +98,42 @@
         <textarea id="actions" rows="4" placeholder="Comma-separated, e.g., wait,charge,deliver"></textarea>
       </details>
       <details>
-        <summary>Constraints</summary>
-        <textarea id="constraints" rows="3" placeholder="Key constraints, e.g., energy<=100; no_deliver_in_state=C"></textarea>
-      </details>
-      <details>
-        <summary>Salvage Function V_T(s)</summary>
-        <textarea id="salvage" rows="4" placeholder="JSON object mapping state→value, e.g., {&quot;A&quot;:0,&quot;B&quot;:0,&quot;C&quot;:0}"></textarea>
-      </details>
-      <details>
         <summary>Cost Matrix c_t(s,a)</summary>
-        <p>Provide a default cost per (state,action). Use JSON: { "t": { "s": { "a": cost } } } or a single layer { "s": { "a": cost } } to reuse for all t.</p>
+        <p>JSON: { "t": { "s": { "a": cost } } } or stationary { "s": { "a": cost } }</p>
         <textarea id="costs" rows="8" placeholder='{"A":{"wait":1,"charge":3,"deliver":2},"B":{"wait":1,"charge":3,"deliver":2},"C":{"wait":1,"charge":3,"deliver":4}}'></textarea>
       </details>
       <details>
         <summary>Transition Matrices P_t(s'|s,a)</summary>
-        <p>JSON: { "t": { "s": { "a": { "s'": prob, ... } } } } or a single time-invariant object reused across t.</p>
-        <textarea id="transitions" rows="10" placeholder='{"A":{"wait":{"A":0.8,"B":0.2},"charge":{"A":0.9,"B":0.1},"deliver":{"B":0.7,"C":0.3}}, "B":{"wait":{"B":0.8,"C":0.2},"charge":{"A":0.4,"B":0.6},"deliver":{"C":0.8,"B":0.2}}, "C":{"wait":{"C":1.0},"charge":{"B":1.0},"deliver":{"C":1.0}}}'></textarea>
-      </details>
-    </div>
-
-    <div>
-      <h2>3) Results (Outputs)</h2>
-      <div class="row">
-        <button id="solveBtn">Solve DP</button>
-        <button id="exportBtn" class="ghost">Export JSON</button>
-      </div>
-      <details open>
-        <summary>Value Function V_t(s)</summary>
-        <pre id="valueFn">(solve to see results)</pre>
-      </details>
-      <details>
-        <summary>Optimal Policy π_t(s)</summary>
-        <pre id="policy">(solve to see results)</pre>
-      </details>
-      <details>
-        <summary>Diagnostics</summary>
-        <pre id="diag"></pre>
+        <p>JSON: { "t": { "s": { "a": { "s'": prob } } } } or stationary { "s": { "a": { "s'": prob } } }</p>
+        <textarea id="transitions" rows="10" placeholder='{"A":{"wait":{"A":0.8,"B":0.2},"charge":{"A":0.9,"B":0.1},"deliver":{"B":0.7,"C":0.3}},"B":{"wait":{"B":0.8,"C":0.2},"charge":{"A":0.4,"B":0.6},"deliver":{"C":0.8,"B":0.2}},"C":{"wait":{"C":1.0},"charge":{"B":1.0},"deliver":{"C":1.0}}}'></textarea>
       </details>
     </div>
   </section>
 
+  <!-- 4) Results -->
   <section class="card">
-    <h2>Notes</h2>
-    <ul>
-      <li>Natural-language parser is heuristic. It proposes candidates; you should edit.</li>
-      <li>All inputs are client-side. No server, no external libraries.</li>
-      <li>Value function is computed backward from stage T using your salvage values.</li>
-    </ul>
+    <h2>4) Results (Outputs)</h2>
+    <div class="row">
+      <button id="solveBtn">Solve DP</button>
+      <button id="exportBtn" class="ghost">Export JSON</button>
+    </div>
+    <details open>
+      <summary>Value Function V_t(s)</summary>
+      <pre id="valueFn">(solve to see results)</pre>
+    </details>
+    <details>
+      <summary>Optimal Policy π_t(s)</summary>
+      <pre id="policy">(solve to see results)</pre>
+    </details>
+    <details>
+      <summary>Diagnostics</summary>
+      <pre id="diag"></pre>
+    </details>
   </section>
 </main>
 
 <footer>
-  <small>© 2025 — Front-end only demo for GitHub Pages.</small>
+  <small>© 2025 — front-end only demo for GitHub Pages.</small>
 </footer>
 
 <script src="app.js"></script>
